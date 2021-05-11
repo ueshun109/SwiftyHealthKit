@@ -21,7 +21,7 @@ public struct HeartRate {
     self.healthStore = healthStore
   }
 
-  /// Get bpm(beat per minutes)
+  /// Get bpm(beat per minutes) during workout
   /// - Parameters:
   ///   - workouts: HKWorkout list
   ///   - quantityOptions: Options for statistics to calculate(e.g.: max, min, average etc.)

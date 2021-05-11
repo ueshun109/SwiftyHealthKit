@@ -18,7 +18,7 @@ public class SwiftyHealthKit {
   /// Requests permission to save and read the specified data types.
   public func requestPermission(
     saveDataTypes: Set<HKSampleType>?,
-    readDataTypes: Set<HKSampleType>?
+    readDataTypes: Set<HKObjectType>?
   ) -> Future<Bool, Error> {
     return Future { [weak self] completion in
       guard let self = self else { return }
@@ -47,10 +47,44 @@ public class SwiftyHealthKit {
     let workoutType = HKWorkoutType.workoutType()
     let heartRateType = HKObjectType.quantityType(forIdentifier: .heartRate)!
     return requestPermission(saveDataTypes: nil, readDataTypes: [workoutType, heartRateType])
+      .mapError { error in SwiftyHealthKitError.denied }
       .flatMap { _ in workout.workouts(activityType: activityType) }
       .mapError { error in SwiftyHealthKitError.queryError(error) }
       .flatMap { workouts in heartRate.heartRate(during: workouts, statisticsOptions: statisticsOptions)}
       .mapError { error in SwiftyHealthKitError.queryError(error) }
+      .eraseToAnyPublisher()
+  }
+
+  /// Get user's profile(e.g. birthDate, height, sex, weight)
+  /// - Parameter type: the profile data you want
+  public func queryProfile(
+    type: Set<ProfileType>
+  ) -> AnyPublisher<Profile, Error> {
+    let getProfile = GetProfile(healthStore: healthStore)
+    let readType = Set(type.map { $0.dataType })
+    let saveType = Set(readType.compactMap { $0 as? HKSampleType })
+    return requestPermission(saveDataTypes: saveType, readDataTypes: readType)
+      .mapError { error in SwiftyHealthKitError.denied }
+      .flatMap { _ in
+        getProfile.birthDate
+          .map { Profile(birthDate: $0) }
+          .catch { _ in Just(Profile()) }
+      }
+      .flatMap { profile in
+        getProfile.height
+          .map { Profile(birthDate: profile.birthDate, height: $0) }
+          .catch { _ in Just(profile) }
+      }
+      .flatMap { profile in
+        getProfile.sex
+          .map { Profile(birthDate: profile.birthDate, height: profile.height, sex: $0) }
+          .catch { _ in Just(profile) }
+      }
+      .flatMap { profile in
+        getProfile.weight
+          .map { Profile(birthDate: profile.birthDate, height: profile.height, sex: profile.sex, weight: $0) }
+          .catch { _ in Just(profile) }
+      }
       .eraseToAnyPublisher()
   }
 }
