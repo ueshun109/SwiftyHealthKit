@@ -50,7 +50,7 @@ public struct GetProfile {
     self.healthStore = healthStore
   }
 
-  public var birthDate: Future<DateComponents?, Error> {
+  public var birthDate: Future<DateComponents?, SwiftyHealthKitError> {
     Future { completion in
       do {
         let dateOfBirth = try healthStore.dateOfBirthComponents()
@@ -61,7 +61,7 @@ public struct GetProfile {
     }
   }
 
-  public var height: Future<Double?, Error> {
+  public var height: Future<Double?, SwiftyHealthKitError> {
     Future { completion in
       let dataType = HKObjectType.quantityType(forIdentifier: .height)!
       let sortDescriptor = NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: false)
@@ -81,7 +81,7 @@ public struct GetProfile {
     }
   }
 
-  public var sex: Future<Profile.Sex?, Error> {
+  public var sex: Future<Profile.Sex?, SwiftyHealthKitError> {
     Future { completion in
       do {
         let sex = try healthStore.biologicalSex().biologicalSex
@@ -92,7 +92,7 @@ public struct GetProfile {
     }
   }
 
-  public var weight: Future<Double?, Error> {
+  public var weight: Future<Double?, SwiftyHealthKitError> {
     Future { completion in
       let dataType = HKObjectType.quantityType(forIdentifier: .bodyMass)!
       let sortDescriptor = NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: false)

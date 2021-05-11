@@ -7,10 +7,10 @@
 
 import Foundation
 
-public enum SwiftyHealthKitError: Error {
+public enum SwiftyHealthKitError: Error, Equatable {
   case denied
   case unavailable
-  case queryError(Error)
+  case queryError
   
   var message: String {
     switch self {

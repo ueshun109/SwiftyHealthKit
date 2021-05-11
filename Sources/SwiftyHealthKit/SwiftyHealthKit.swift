@@ -49,9 +49,9 @@ public class SwiftyHealthKit {
     return requestPermission(saveDataTypes: nil, readDataTypes: [workoutType, heartRateType])
       .mapError { error in SwiftyHealthKitError.denied }
       .flatMap { _ in workout.workouts(activityType: activityType) }
-      .mapError { error in SwiftyHealthKitError.queryError(error) }
+      .mapError { error in SwiftyHealthKitError.queryError }
       .flatMap { workouts in heartRate.heartRate(during: workouts, statisticsOptions: statisticsOptions)}
-      .mapError { error in SwiftyHealthKitError.queryError(error) }
+      .mapError { error in SwiftyHealthKitError.queryError }
       .eraseToAnyPublisher()
   }
 
@@ -59,7 +59,7 @@ public class SwiftyHealthKit {
   /// - Parameter type: the profile data you want
   public func queryProfile(
     type: Set<ProfileType>
-  ) -> AnyPublisher<Profile, Error> {
+  ) -> AnyPublisher<Profile, SwiftyHealthKitError> {
     let getProfile = GetProfile(healthStore: healthStore)
     let readType = Set(type.map { $0.dataType })
     let saveType = Set(readType.compactMap { $0 as? HKSampleType })
