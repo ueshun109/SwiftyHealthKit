@@ -18,15 +18,22 @@ public enum ProfileType {
 }
 
 public struct Profile: Equatable {
+  public enum Sex: Int, Equatable {
+    case notSet
+    case female
+    case male
+    case other
+  }
+
   public var birthDate: DateComponents?
   public var height: Double?
-  public var sex: HKBiologicalSex?
+  public var sex: Profile.Sex?
   public var weight: Double?
 
   public init(
     birthDate: DateComponents? = nil,
     height: Double? = nil,
-    sex: HKBiologicalSex? = nil,
+    sex: Profile.Sex? = nil,
     weight: Double? = nil
   ) {
     self.birthDate = birthDate
@@ -74,11 +81,11 @@ public struct GetProfile {
     }
   }
 
-  public var sex: Future<HKBiologicalSex?, Error> {
+  public var sex: Future<Profile.Sex?, Error> {
     Future { completion in
       do {
         let sex = try healthStore.biologicalSex().biologicalSex
-        completion(.success(sex))
+        completion(.success(Profile.Sex(rawValue: sex.rawValue)))
       } catch {
         completion(.success(nil))
       }
