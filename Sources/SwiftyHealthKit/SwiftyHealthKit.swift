@@ -14,22 +14,7 @@ public class SwiftyHealthKit {
     guard HKHealthStore.isHealthDataAvailable() else { return nil }
     self.healthStore = HKHealthStore()
   }
-  
-  /// Requests permission to save and read the specified data types.
-  public func requestPermission(
-    saveDataTypes: Set<HKSampleType>?,
-    readDataTypes: Set<HKObjectType>?
-  ) -> Future<Bool, Error> {
-    return Future { [weak self] completion in
-      guard let self = self else { return }
-      self.healthStore.requestAuthorization(toShare: saveDataTypes, read: readDataTypes) { result, error in
-        guard let error = error else { completion(.success(result)); return }
-        completion(.failure(error))
-        logger.log("Denied access to health care data.")
-      }
-    }
-  }
-  
+
   /// Get heart rate during workout.
   /// - Parameters:
   ///   - startDate: start date
@@ -55,7 +40,7 @@ public class SwiftyHealthKit {
       .eraseToAnyPublisher()
   }
 
-  /// Get user's profile(e.g. birthDate, height, sex, weight)
+  /// Get user's profile.(e.g. birthDate, height, sex, weight)
   /// - Parameter type: the profile data you want
   public func queryProfile(
     type: Set<ProfileType>
@@ -86,5 +71,41 @@ public class SwiftyHealthKit {
           .catch { _ in Just(profile) }
       }
       .eraseToAnyPublisher()
+  }
+
+  /// Get workout data.
+  /// - Parameters:
+  ///   - startDate: start date
+  ///   - endDate: end date
+  ///   - statisticsOptions:
+  ///   - activityType: The type of activity performed during a workout
+  public func queryWorkout(
+    startDate: Date,
+    endDate: Date,
+    statisticsOptions: HKStatisticsOptions,
+    activityType: HKWorkoutActivityType
+  ) -> AnyPublisher<[HKWorkout], SwiftyHealthKitError> {
+    let workout = Workout(startDate: startDate, endDate: endDate, healthStore: healthStore)
+    let workoutType = HKWorkoutType.workoutType()
+    return requestPermission(saveDataTypes: nil, readDataTypes: [workoutType])
+      .mapError { error in SwiftyHealthKitError.denied }
+      .flatMap { _ in workout.workouts(activityType: activityType) }
+      .mapError { error in SwiftyHealthKitError.queryError }
+      .eraseToAnyPublisher()
+  }
+
+  /// Requests permission to save and read the specified data types.
+  public func requestPermission(
+    saveDataTypes: Set<HKSampleType>?,
+    readDataTypes: Set<HKObjectType>?
+  ) -> Future<Bool, Error> {
+    return Future { [weak self] completion in
+      guard let self = self else { return }
+      self.healthStore.requestAuthorization(toShare: saveDataTypes, read: readDataTypes) { result, error in
+        guard let error = error else { completion(.success(result)); return }
+        completion(.failure(error))
+        logger.log("Denied access to health care data.")
+      }
+    }
   }
 }
