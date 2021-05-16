@@ -10,13 +10,15 @@ import Foundation
 public enum SwiftyHealthKitError: Error, Equatable {
   case denied
   case unavailable
-  case queryError
+  case query
+  case session
   
   var message: String {
     switch self {
     case .denied: return "Access to health data is not allowed."
     case .unavailable: return "HealthKit is unavailable for your device."
-    case .queryError: return "Failed to get the health data."
+    case .query: return "Failed to get the health data."
+    case .session: return "Failed to get the workout session."
     }
   }
 }

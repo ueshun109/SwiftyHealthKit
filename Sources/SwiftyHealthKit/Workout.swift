@@ -1,26 +1,19 @@
-//
-//  File.swift
-//  
-//
-//  Created by uematsushun on 2021/05/01.
-//
-
 import Combine
 import Foundation
 import HealthKit
 
 public struct Workout {
-  public private(set) var startDate: Date
-  public private(set) var endDate: Date
   public private(set) var healthStore: HKHealthStore
 
-  public init(startDate: Date, endDate: Date, healthStore: HKHealthStore) {
-    self.startDate = startDate
-    self.endDate = endDate
+  public init(healthStore: HKHealthStore) {
     self.healthStore = healthStore
   }
 
-  public func workouts(activityType: HKWorkoutActivityType) -> Future<[HKWorkout], Error> {
+  public func workouts(
+    activityType: HKWorkoutActivityType,
+    startDate: Date,
+    endDate: Date
+  ) -> Future<[HKWorkout], Error> {
     Future { completion in
       let workoutPredicate = HKQuery.predicateForWorkouts(with: activityType)
       let samplePredicate = HKQuery.predicateForSamples(withStart: startDate, end: endDate, options: .strictStartDate)
@@ -38,4 +31,26 @@ public struct Workout {
       healthStore.execute(query)
     }
   }
+
+  #if os(watchOS)
+  public func session(
+    activityType: HKWorkoutActivityType,
+    locationType: HKWorkoutSessionLocationType
+  ) -> Future<HKWorkoutSession, Error> {
+    Future { completion in
+      let configuration = HKWorkoutConfiguration()
+      configuration.activityType = activityType
+      configuration.locationType = locationType
+      do {
+        let session = try HKWorkoutSession(
+          healthStore: healthStore,
+          configuration: configuration
+        )
+        completion(.success(session))
+      } catch {
+        completion(.failure(error))
+      }
+    }
+  }
+  #endif
 }

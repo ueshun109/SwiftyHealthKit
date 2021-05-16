@@ -28,15 +28,15 @@ public class SwiftyHealthKit {
     activityType: HKWorkoutActivityType
   ) -> AnyPublisher<[HeartRate.HeartRatePerWorkout], Error> {
     let heartRate = HeartRate(startDate: startDate, endDate: endDate, healthStore: healthStore)
-    let workout = Workout(startDate: startDate, endDate: endDate, healthStore: healthStore)
+    let workout = Workout(healthStore: healthStore)
     let workoutType = HKWorkoutType.workoutType()
     let heartRateType = HKObjectType.quantityType(forIdentifier: .heartRate)!
     return requestPermission(saveDataTypes: nil, readDataTypes: [workoutType, heartRateType])
       .mapError { error in SwiftyHealthKitError.denied }
-      .flatMap { _ in workout.workouts(activityType: activityType) }
-      .mapError { error in SwiftyHealthKitError.queryError }
+      .flatMap { _ in workout.workouts(activityType: activityType, startDate: startDate, endDate: endDate) }
+      .mapError { error in SwiftyHealthKitError.query }
       .flatMap { workouts in heartRate.heartRate(during: workouts, statisticsOptions: statisticsOptions)}
-      .mapError { error in SwiftyHealthKitError.queryError }
+      .mapError { error in SwiftyHealthKitError.query }
       .eraseToAnyPublisher()
   }
 
@@ -85,12 +85,12 @@ public class SwiftyHealthKit {
     statisticsOptions: HKStatisticsOptions,
     activityType: HKWorkoutActivityType
   ) -> AnyPublisher<[HKWorkout], SwiftyHealthKitError> {
-    let workout = Workout(startDate: startDate, endDate: endDate, healthStore: healthStore)
+    let workout = Workout(healthStore: healthStore)
     let workoutType = HKWorkoutType.workoutType()
     return requestPermission(saveDataTypes: nil, readDataTypes: [workoutType])
-      .mapError { error in SwiftyHealthKitError.denied }
-      .flatMap { _ in workout.workouts(activityType: activityType) }
-      .mapError { error in SwiftyHealthKitError.queryError }
+      .mapError { _ in SwiftyHealthKitError.denied }
+      .flatMap { _ in workout.workouts(activityType: activityType, startDate: startDate, endDate: endDate) }
+      .mapError { _ in SwiftyHealthKitError.query }
       .eraseToAnyPublisher()
   }
 
@@ -99,7 +99,7 @@ public class SwiftyHealthKit {
     saveDataTypes: Set<HKSampleType>?,
     readDataTypes: Set<HKObjectType>?
   ) -> Future<Bool, Error> {
-    return Future { [weak self] completion in
+    Future { [weak self] completion in
       guard let self = self else { return }
       self.healthStore.requestAuthorization(toShare: saveDataTypes, read: readDataTypes) { result, error in
         guard let error = error else { completion(.success(result)); return }
@@ -108,4 +108,19 @@ public class SwiftyHealthKit {
       }
     }
   }
+
+  #if os(watchOS)
+  public func getWorkoutSession(
+    activityType: HKWorkoutActivityType,
+    locationType: HKWorkoutSessionLocationType
+  ) -> AnyPublisher<HKWorkoutSession, SwiftyHealthKitError> {
+    let workout = Workout(healthStore: self.healthStore)
+    let workoutType = HKWorkoutType.workoutType()
+    return requestPermission(saveDataTypes: [workoutType], readDataTypes: nil)
+      .mapError { _ in SwiftyHealthKitError.denied }
+      .flatMap { _  in workout.session(activityType: activityType, locationType: locationType) }
+      .mapError { _ in SwiftyHealthKitError.session }
+      .eraseToAnyPublisher()
+  }
+  #endif
 }
