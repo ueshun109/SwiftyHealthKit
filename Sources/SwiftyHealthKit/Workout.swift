@@ -1,6 +1,6 @@
 import Combine
-import Foundation
 import HealthKit
+import os
 
 public struct Workout {
   public private(set) var healthStore: HKHealthStore
@@ -31,26 +31,4 @@ public struct Workout {
       healthStore.execute(query)
     }
   }
-
-  #if os(watchOS)
-  public func session(
-    activityType: HKWorkoutActivityType,
-    locationType: HKWorkoutSessionLocationType
-  ) -> Future<HKWorkoutSession, Error> {
-    Future { completion in
-      let configuration = HKWorkoutConfiguration()
-      configuration.activityType = activityType
-      configuration.locationType = locationType
-      do {
-        let session = try HKWorkoutSession(
-          healthStore: healthStore,
-          configuration: configuration
-        )
-        completion(.success(session))
-      } catch {
-        completion(.failure(error))
-      }
-    }
-  }
-  #endif
 }

@@ -3,7 +3,7 @@ import Foundation
 import HealthKit
 import os
 
-internal let logger = Logger(subsystem: "com.ueshun.SwiftyHealthKit", category: "error")
+internal let logger = Logger(subsystem: "com.ueshun.SwiftyHealthKit", category: "log")
 
 public class SwiftyHealthKit {
   private let healthStore: HKHealthStore!
@@ -108,19 +108,4 @@ public class SwiftyHealthKit {
       }
     }
   }
-
-  #if os(watchOS)
-  public func getWorkoutSession(
-    activityType: HKWorkoutActivityType,
-    locationType: HKWorkoutSessionLocationType
-  ) -> AnyPublisher<HKWorkoutSession, SwiftyHealthKitError> {
-    let workout = Workout(healthStore: self.healthStore)
-    let workoutType = HKWorkoutType.workoutType()
-    return requestPermission(saveDataTypes: [workoutType], readDataTypes: nil)
-      .mapError { _ in SwiftyHealthKitError.denied }
-      .flatMap { _  in workout.session(activityType: activityType, locationType: locationType) }
-      .mapError { _ in SwiftyHealthKitError.session }
-      .eraseToAnyPublisher()
-  }
-  #endif
 }
