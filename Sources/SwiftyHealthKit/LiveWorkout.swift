@@ -98,6 +98,18 @@ public class LiveWorkout: NSObject, ObservableObject {
     workoutSession.end()
   }
 
+  public func add(_ metaData: [String: Any]) -> Future<Bool, SwiftyHealthKitError> {
+    Future { [weak self] completion in
+      self?.liveWorkoutBuilder.addMetadata(metaData) { success, error in
+        if let error = error {
+          completion(.failure(.liveWorkout(error as NSError)))
+          return
+        }
+        completion(.success(success))
+      }
+    }
+  }
+
   private func analyze(statistics: HKStatistics) {
     switch statistics.quantityType {
     case HKQuantityType.quantityType(forIdentifier: .heartRate):
