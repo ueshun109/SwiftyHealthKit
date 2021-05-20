@@ -8,6 +8,9 @@ internal let logger = Logger(subsystem: "com.ueshun.SwiftyHealthKit", category: 
 public class SwiftyHealthKit {
   private let healthStore: HKHealthStore!
   private var cancellables: [AnyCancellable] = []
+  #if os(watchOS)
+  private var liveWorkout: LiveWorkout!
+  #endif
   
   /// Initialize SwiftyHealthKit. Returns nil if your device does not support HealthKit.
   public init?() {
@@ -26,7 +29,7 @@ public class SwiftyHealthKit {
     endDate: Date,
     statisticsOptions: HKStatisticsOptions,
     activityType: HKWorkoutActivityType
-  ) -> AnyPublisher<[HeartRate.HeartRatePerWorkout], Error> {
+  ) -> AnyPublisher<[HeartRate.HeartRatePerWorkout], SwiftyHealthKitError> {
     let heartRate = HeartRate(startDate: startDate, endDate: endDate, healthStore: healthStore)
     let workout = Workout(healthStore: healthStore)
     let workoutType = HKWorkoutType.workoutType()
@@ -34,9 +37,9 @@ public class SwiftyHealthKit {
     return requestPermission(saveDataTypes: nil, readDataTypes: [workoutType, heartRateType])
       .mapError { error in SwiftyHealthKitError.denied }
       .flatMap { _ in workout.workouts(activityType: activityType, startDate: startDate, endDate: endDate) }
-      .mapError { error in SwiftyHealthKitError.query }
+      .mapError { error in SwiftyHealthKitError.query(error as NSError) }
       .flatMap { workouts in heartRate.heartRate(during: workouts, statisticsOptions: statisticsOptions)}
-      .mapError { error in SwiftyHealthKitError.query }
+      .mapError { error in SwiftyHealthKitError.query(error as NSError) }
       .eraseToAnyPublisher()
   }
 
@@ -90,7 +93,7 @@ public class SwiftyHealthKit {
     return requestPermission(saveDataTypes: nil, readDataTypes: [workoutType])
       .mapError { _ in SwiftyHealthKitError.denied }
       .flatMap { _ in workout.workouts(activityType: activityType, startDate: startDate, endDate: endDate) }
-      .mapError { _ in SwiftyHealthKitError.query }
+      .mapError { error in SwiftyHealthKitError.query(error as NSError) }
       .eraseToAnyPublisher()
   }
 
@@ -109,3 +112,32 @@ public class SwiftyHealthKit {
     }
   }
 }
+
+#if os(watchOS)
+extension SwiftyHealthKit {
+  /// - Parameters:
+  ///   - activityType: `HKWorkoutActivityType`
+  ///   - locationType: `HKWorkoutSessionLocationType`
+  ///   - readDataTypes: Data type during the workout you want to monitor
+  public func liveWorkout(
+    activityType: HKWorkoutActivityType,
+    locationType: HKWorkoutSessionLocationType,
+    readDataTypes: Set<HKObjectType>
+  ) -> AnyPublisher<LiveWorkout?, SwiftyHealthKitError> {
+    let saveDataType: Set = [HKWorkoutType.workoutType()]
+    return requestPermission(saveDataTypes: saveDataType, readDataTypes: readDataTypes)
+      .mapError { _ in SwiftyHealthKitError.denied }
+      .tryMap { [weak self] _ -> LiveWorkout? in
+        guard let self = self else { return nil }
+        self.liveWorkout = try LiveWorkout(
+          activityType: activityType,
+          healthStore: self.healthStore,
+          locationType: locationType
+        )
+        return self.liveWorkout
+      }
+      .mapError { error in error as! SwiftyHealthKitError }
+      .eraseToAnyPublisher()
+  }
+}
+#endif

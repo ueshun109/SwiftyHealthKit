@@ -1,14 +1,29 @@
+import Combine
 import HealthKit
 import os
 
 #if os(watchOS)
+public struct LiveWorkoutData: Equatable {
+  public var activeCalories: Double = 0
+  public var distance: Double = 0
+  public var heartRate: Double = 0
+
+  public init() {}
+
+  public mutating func update(
+    activeCalories: Double? = nil,
+    distance: Double? = nil,
+    heartRate: Double? = nil
+  ) {
+    self.activeCalories = activeCalories ?? self.activeCalories
+    self.distance = distance ?? self.distance
+    self.heartRate = heartRate ?? self.heartRate
+  }
+}
+
 public class LiveWorkout: NSObject, ObservableObject {
-  @Published public var activeCalories: Double = 0
-  @Published public var distance: Double = 0
-  @Published public var heartRate: Double = 0
-  @Published public var timeInterval: TimeInterval = 0
-  @Published public var workoutSessionState: HKWorkoutSessionState = .notStarted
-  @Published public var workoutSessionError: Error?
+  public private(set) var data = CurrentValueSubject<LiveWorkoutData, Never>(LiveWorkoutData())
+  public private(set) var sessionState = PassthroughSubject<HKWorkoutSessionState, Error>()
 
   private let activityType: HKWorkoutActivityType
   private let liveWorkoutBuilder: HKLiveWorkoutBuilder
@@ -16,17 +31,17 @@ public class LiveWorkout: NSObject, ObservableObject {
   private let swimmingLocationType: HKWorkoutSwimmingLocationType?
   private let workoutSession: HKWorkoutSession
 
-  public init?(
+  public init(
     activityType: HKWorkoutActivityType,
     healthStore: HKHealthStore,
     locationType: HKWorkoutSessionLocationType,
     swimmingLocationType: HKWorkoutSwimmingLocationType? = nil
-  ) {
+  ) throws {
     self.activityType = activityType
     self.locationType = locationType
     self.swimmingLocationType = swimmingLocationType
 
-    if activityType == .swimming && swimmingLocationType == nil { return nil }
+    if activityType == .swimming && swimmingLocationType == nil { throw SwiftyHealthKitError.swimmingSession }
 
     let configuration = HKWorkoutConfiguration()
     configuration.activityType = activityType
@@ -44,7 +59,7 @@ public class LiveWorkout: NSObject, ObservableObject {
       workoutSession.prepare()
       liveWorkoutBuilder = workoutSession.associatedWorkoutBuilder()
     } catch {
-      return nil
+      throw SwiftyHealthKitError.session(error as NSError)
     }
 
     super.init()
@@ -61,7 +76,7 @@ public class LiveWorkout: NSObject, ObservableObject {
     workoutSession.startActivity(with: Date())
     liveWorkoutBuilder.beginCollection(withStart: Date()) { [weak self] _, error in
       if let error = error {
-        self?.workoutSessionError = error
+        self?.sessionState.send(completion: .failure(error))
         logger.error("\(error.localizedDescription)")
       } else {
         logger.debug("Start collecting workout data.")
@@ -88,18 +103,19 @@ public class LiveWorkout: NSObject, ObservableObject {
     case HKQuantityType.quantityType(forIdentifier: .heartRate):
       let heartRateUnit = HKUnit.count().unitDivided(by: HKUnit.minute())
       let value = statistics.mostRecentQuantity()?.doubleValue(for: heartRateUnit)
-      let roundedValue = Double( round( 1 * value! ) / 1 )
-      heartRate = roundedValue
+      data.value.update(heartRate: Double( round( 1 * value! ) / 1 ))
+
     case HKQuantityType.quantityType(forIdentifier: .activeEnergyBurned):
       let energyUnit = HKUnit.kilocalorie()
       let value = statistics.sumQuantity()?.doubleValue(for: energyUnit)
-      activeCalories = Double( round( 1 * value! ) / 1 )
+      data.value.update(activeCalories: Double( round( 1 * value! ) / 1 ))
+
     case HKQuantityType.quantityType(forIdentifier: .distanceSwimming),
          HKQuantityType.quantityType(forIdentifier: .distanceWalkingRunning):
       let meterUnit = HKUnit.meter()
       let value = statistics.sumQuantity()?.doubleValue(for: meterUnit)
-      let roundedValue = Double( round( 1 * value! ) / 1 )
-      distance = roundedValue
+      data.value.update(distance: Double( round( 1 * value! ) / 1 ))
+
     default:
       break
     }
@@ -111,7 +127,7 @@ extension LiveWorkout: HKWorkoutSessionDelegate {
     _ workoutSession: HKWorkoutSession,
     didFailWithError error: Error
   ) {
-    workoutSessionError = error
+    sessionState.send(completion: .failure(error))
     logger.error("\(error.localizedDescription)")
   }
 
@@ -121,17 +137,17 @@ extension LiveWorkout: HKWorkoutSessionDelegate {
     from fromState: HKWorkoutSessionState,
     date: Date
   ) {
-    workoutSessionState = toState
+    sessionState.send(toState)
     if toState == .ended {
       liveWorkoutBuilder.endCollection(withEnd: Date()) { [weak self] _, error in
         if let error = error {
-          self?.workoutSessionError = error
+          self?.sessionState.send(completion: .failure(error))
           logger.error("\(error.localizedDescription)")
           return
         }
         self?.liveWorkoutBuilder.finishWorkout { workout, error in
           if let error = error {
-            self?.workoutSessionError = error
+            self?.sessionState.send(completion: .failure(error))
             logger.error("\(error.localizedDescription)")
           } else {
             logger.debug("End workout session.")

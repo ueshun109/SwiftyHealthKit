@@ -1,24 +1,27 @@
-//
-//  File.swift
-//  
-//
-//  Created by uematsushun on 2021/04/25.
-//
-
 import Foundation
 
-public enum SwiftyHealthKitError: Error, Equatable {
+public enum SwiftyHealthKitError: Equatable, LocalizedError {
   case denied
+  case liveWorkout(NSError)
+  case query(NSError)
+  case session(NSError)
+  case swimmingSession
   case unavailable
-  case query
-  case session
-  
+
   var message: String {
     switch self {
-    case .denied: return "Access to health data is not allowed."
-    case .unavailable: return "HealthKit is unavailable for your device."
-    case .query: return "Failed to get the health data."
-    case .session: return "Failed to get the workout session."
+    case .denied:
+      return "Access to health data is not allowed."
+    case let .liveWorkout(error):
+      return error.localizedDescription
+    case let .query(error):
+      return error.localizedDescription
+    case let .session(error):
+      return error.localizedDescription
+    case .swimmingSession:
+      return "When activityType is swimming, please set also swimmingLocationType."
+    case .unavailable:
+      return "HealthKit is unavailable for your device."
     }
   }
 }

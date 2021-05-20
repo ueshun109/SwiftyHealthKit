@@ -1,10 +1,3 @@
-//
-//  File.swift
-//  
-//
-//  Created by uematsushun on 2021/05/01.
-//
-
 import Combine
 import Foundation
 import HealthKit
