@@ -119,12 +119,21 @@ extension SwiftyHealthKit {
   ///   - activityType: `HKWorkoutActivityType`
   ///   - locationType: `HKWorkoutSessionLocationType`
   ///   - readDataTypes: Data type during the workout you want to monitor
+  ///   - isMock: If true, mock data will be sent
   public func liveWorkout(
     activityType: HKWorkoutActivityType,
     locationType: HKWorkoutSessionLocationType,
-    readDataTypes: Set<HKObjectType>
-  ) -> AnyPublisher<LiveWorkout?, SwiftyHealthKitError> {
+    readDataTypes: Set<HKObjectType>,
+    isMock: Bool = false
+  ) -> AnyPublisher<LiveWorkoutProtocol?, SwiftyHealthKitError> {
     let saveDataType: Set = [HKWorkoutType.workoutType()]
+
+    if isMock {
+      return Just(LiveWorkoutMock())
+        .setFailureType(to: SwiftyHealthKitError.self)
+        .eraseToAnyPublisher()
+    }
+
     return requestPermission(saveDataTypes: saveDataType, readDataTypes: readDataTypes)
       .mapError { _ in SwiftyHealthKitError.denied }
       .tryMap { [weak self] _ -> LiveWorkout? in

@@ -21,7 +21,17 @@ public struct LiveWorkoutData: Equatable {
   }
 }
 
-public class LiveWorkout: NSObject, ObservableObject {
+public protocol LiveWorkoutProtocol {
+  var data: CurrentValueSubject<LiveWorkoutData, Never> { get }
+  var sessionState: PassthroughSubject<HKWorkoutSessionState, Error> { get }
+  func add(_ metaData: [String: Any]) -> Future<Bool, SwiftyHealthKitError>
+  func end()
+  func pause()
+  func resume()
+  func start()
+}
+
+public class LiveWorkout: NSObject, LiveWorkoutProtocol {
   public private(set) var data = CurrentValueSubject<LiveWorkoutData, Never>(LiveWorkoutData())
   public private(set) var sessionState = PassthroughSubject<HKWorkoutSessionState, Error>()
 
@@ -72,16 +82,20 @@ public class LiveWorkout: NSObject, ObservableObject {
     )
   }
 
-  public func start() {
-    workoutSession.startActivity(with: Date())
-    liveWorkoutBuilder.beginCollection(withStart: Date()) { [weak self] _, error in
-      if let error = error {
-        self?.sessionState.send(completion: .failure(error))
-        logger.error("\(error.localizedDescription)")
-      } else {
-        logger.debug("Start collecting workout data.")
+  public func add(_ metaData: [String: Any]) -> Future<Bool, SwiftyHealthKitError> {
+    Future { [weak self] completion in
+      self?.liveWorkoutBuilder.addMetadata(metaData) { success, error in
+        if let error = error {
+          completion(.failure(.liveWorkout(error as NSError)))
+          return
+        }
+        completion(.success(success))
       }
     }
+  }
+
+  public func end() {
+    workoutSession.end()
   }
 
   public func pause() {
@@ -94,18 +108,14 @@ public class LiveWorkout: NSObject, ObservableObject {
     logger.debug("Resume workout session.")
   }
 
-  public func end() {
-    workoutSession.end()
-  }
-
-  public func add(_ metaData: [String: Any]) -> Future<Bool, SwiftyHealthKitError> {
-    Future { [weak self] completion in
-      self?.liveWorkoutBuilder.addMetadata(metaData) { success, error in
-        if let error = error {
-          completion(.failure(.liveWorkout(error as NSError)))
-          return
-        }
-        completion(.success(success))
+  public func start() {
+    workoutSession.startActivity(with: Date())
+    liveWorkoutBuilder.beginCollection(withStart: Date()) { [weak self] _, error in
+      if let error = error {
+        self?.sessionState.send(completion: .failure(error))
+        logger.error("\(error.localizedDescription)")
+      } else {
+        logger.debug("Start collecting workout data.")
       }
     }
   }
@@ -186,6 +196,53 @@ extension LiveWorkout: HKLiveWorkoutBuilderDelegate {
   }
 
   public func workoutBuilderDidCollectEvent(_ workoutBuilder: HKLiveWorkoutBuilder) {
+  }
+}
+
+public class LiveWorkoutMock: NSObject, LiveWorkoutProtocol {
+  public var data = CurrentValueSubject<LiveWorkoutData, Never>(LiveWorkoutData())
+  public var sessionState = PassthroughSubject<HKWorkoutSessionState, Error>()
+  private var timer: Timer?
+
+  public func add(_ metaData: [String : Any]) -> Future<Bool, SwiftyHealthKitError> {
+    Future { completion in
+      completion(.failure(.unavailable))
+    }
+  }
+
+  public func end() {
+    stopTimer()
+  }
+
+  public func pause() {
+    stopTimer()
+  }
+
+  public func resume() {
+    startTimer()
+  }
+
+  public func start() {
+    startTimer()
+  }
+
+  private func startTimer() {
+    timer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] timer in
+      guard let self = self else { return }
+      let activeEnergyBurned = self.data.value.activeCalories + 1
+      let distance = self.data.value.distance + 3
+      let heartRate = Double.random(in: 60...100)
+      self.data.value.update(
+        activeCalories: activeEnergyBurned,
+        distance: distance,
+        heartRate: heartRate
+      )
+    }
+    timer?.fire()
+  }
+
+  private func stopTimer() {
+    timer?.invalidate()
   }
 }
 #endif
