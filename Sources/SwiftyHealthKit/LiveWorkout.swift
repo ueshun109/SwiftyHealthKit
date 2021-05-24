@@ -34,6 +34,7 @@ public protocol LiveWorkoutProtocol {
   ) throws
   func resume()
   func start()
+  func stop()
 }
 
 public class LiveWorkout: NSObject, LiveWorkoutProtocol {
@@ -144,6 +145,11 @@ public class LiveWorkout: NSObject, LiveWorkoutProtocol {
         logger.debug("Start collecting workout data.")
       }
     }
+  }
+
+  public func stop() {
+    data.value = LiveWorkoutData()
+    workoutSession.stopActivity(with: Date())
   }
 
   private func analyze(statistics: HKStatistics) {
@@ -302,6 +308,10 @@ public class LiveWorkoutMock: NSObject, LiveWorkoutProtocol {
 
   public func start() {
     startTimer()
+  }
+
+  public func stop() {
+    stopTimer()
   }
 
   private func startTimer() {
