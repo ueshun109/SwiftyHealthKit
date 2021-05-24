@@ -146,6 +146,11 @@ public class LiveWorkout: NSObject, LiveWorkoutProtocol {
     }
   }
 
+  public func stop() {
+    data.value = LiveWorkoutData()
+    workoutSession.stopActivity(with: Date())
+  }
+
   private func analyze(statistics: HKStatistics) {
     switch statistics.quantityType {
     case HKQuantityType.quantityType(forIdentifier: .heartRate):
