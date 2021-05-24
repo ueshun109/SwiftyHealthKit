@@ -8,7 +8,7 @@ public enum SwiftyHealthKitError: Equatable, LocalizedError {
   case swimmingSession
   case unavailable
 
-  var message: String {
+  public var message: String {
     switch self {
     case .denied:
       return "Access to health data is not allowed."

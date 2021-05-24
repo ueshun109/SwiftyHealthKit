@@ -27,6 +27,11 @@ public protocol LiveWorkoutProtocol {
   func add(_ metaData: [String: Any]) -> Future<Bool, SwiftyHealthKitError>
   func end()
   func pause()
+  func reset(
+    activityType: HKWorkoutActivityType,
+    locationType: HKWorkoutSessionLocationType,
+    swimmingLocationType: HKWorkoutSwimmingLocationType?
+  ) throws
   func resume()
   func start()
 }
@@ -35,11 +40,13 @@ public class LiveWorkout: NSObject, LiveWorkoutProtocol {
   public private(set) var data = CurrentValueSubject<LiveWorkoutData, Never>(LiveWorkoutData())
   public private(set) var sessionState = PassthroughSubject<HKWorkoutSessionState, Error>()
 
-  private let activityType: HKWorkoutActivityType
-  private let liveWorkoutBuilder: HKLiveWorkoutBuilder
-  private let locationType: HKWorkoutSessionLocationType
-  private let swimmingLocationType: HKWorkoutSwimmingLocationType?
-  private let workoutSession: HKWorkoutSession
+  private let healthStore: HKHealthStore
+  private var activityType: HKWorkoutActivityType
+  private var liveWorkoutBuilder: HKLiveWorkoutBuilder
+  private var locationType: HKWorkoutSessionLocationType
+  private var swimmingLocationType: HKWorkoutSwimmingLocationType?
+  private var workoutConfiguration: HKWorkoutConfiguration
+  private var workoutSession: HKWorkoutSession
 
   public init(
     activityType: HKWorkoutActivityType,
@@ -48,23 +55,24 @@ public class LiveWorkout: NSObject, LiveWorkoutProtocol {
     swimmingLocationType: HKWorkoutSwimmingLocationType? = nil
   ) throws {
     self.activityType = activityType
+    self.healthStore = healthStore
     self.locationType = locationType
     self.swimmingLocationType = swimmingLocationType
 
     if activityType == .swimming && swimmingLocationType == nil { throw SwiftyHealthKitError.swimmingSession }
 
-    let configuration = HKWorkoutConfiguration()
-    configuration.activityType = activityType
-    configuration.locationType = locationType
+    workoutConfiguration = HKWorkoutConfiguration()
+    workoutConfiguration.activityType = activityType
+    workoutConfiguration.locationType = locationType
     if let swimmingLocationType = swimmingLocationType {
-      configuration.swimmingLocationType = swimmingLocationType
-      configuration.lapLength = HKQuantity(unit: .meter(), doubleValue: 25)
+      workoutConfiguration.swimmingLocationType = swimmingLocationType
+      workoutConfiguration.lapLength = HKQuantity(unit: .meter(), doubleValue: 25)
     }
 
     do {
       workoutSession = try HKWorkoutSession(
         healthStore: healthStore,
-        configuration: configuration
+        configuration: workoutConfiguration
       )
       workoutSession.prepare()
       liveWorkoutBuilder = workoutSession.associatedWorkoutBuilder()
@@ -78,7 +86,7 @@ public class LiveWorkout: NSObject, LiveWorkoutProtocol {
     self.liveWorkoutBuilder.delegate = self
     self.liveWorkoutBuilder.dataSource = HKLiveWorkoutDataSource(
       healthStore: healthStore,
-      workoutConfiguration: configuration
+      workoutConfiguration: workoutConfiguration
     )
   }
 
@@ -95,12 +103,30 @@ public class LiveWorkout: NSObject, LiveWorkoutProtocol {
   }
 
   public func end() {
+    data.value = LiveWorkoutData()
     workoutSession.end()
   }
 
   public func pause() {
     workoutSession.pause()
     logger.debug("Pause workout session.")
+  }
+
+  public func reset(
+    activityType: HKWorkoutActivityType,
+    locationType: HKWorkoutSessionLocationType,
+    swimmingLocationType: HKWorkoutSwimmingLocationType? = nil
+  ) throws {
+    try configureWorkoutConfiguration(
+      activityType: activityType,
+      healthStore: healthStore,
+      locationType: locationType,
+      swimmingLocationType: swimmingLocationType
+    )
+    try configureWorkoutSession(
+      configuration: workoutConfiguration,
+      healthStore: healthStore
+    )
   }
 
   public func resume() {
@@ -141,6 +167,50 @@ public class LiveWorkout: NSObject, LiveWorkoutProtocol {
     default:
       break
     }
+  }
+
+  private func configureWorkoutConfiguration(
+    activityType: HKWorkoutActivityType,
+    healthStore: HKHealthStore,
+    locationType: HKWorkoutSessionLocationType,
+    swimmingLocationType: HKWorkoutSwimmingLocationType? = nil
+  ) throws {
+    self.activityType = activityType
+    self.locationType = locationType
+    self.swimmingLocationType = swimmingLocationType
+
+    if activityType == .swimming && swimmingLocationType == nil { throw SwiftyHealthKitError.swimmingSession }
+
+    workoutConfiguration = HKWorkoutConfiguration()
+    workoutConfiguration.activityType = activityType
+    workoutConfiguration.locationType = locationType
+    if let swimmingLocationType = swimmingLocationType {
+      workoutConfiguration.swimmingLocationType = swimmingLocationType
+      workoutConfiguration.lapLength = HKQuantity(unit: .meter(), doubleValue: 25)
+    }
+  }
+
+  private func configureWorkoutSession(
+    configuration: HKWorkoutConfiguration,
+    healthStore: HKHealthStore
+  ) throws {
+    do {
+      workoutSession = try HKWorkoutSession(
+        healthStore: healthStore,
+        configuration: configuration
+      )
+      workoutSession.prepare()
+      liveWorkoutBuilder = workoutSession.associatedWorkoutBuilder()
+    } catch {
+      throw SwiftyHealthKitError.session(error as NSError)
+    }
+
+    self.workoutSession.delegate = self
+    self.liveWorkoutBuilder.delegate = self
+    self.liveWorkoutBuilder.dataSource = HKLiveWorkoutDataSource(
+      healthStore: healthStore,
+      workoutConfiguration: configuration
+    )
   }
 }
 
@@ -216,6 +286,14 @@ public class LiveWorkoutMock: NSObject, LiveWorkoutProtocol {
 
   public func pause() {
     stopTimer()
+  }
+
+  public func reset(
+    activityType: HKWorkoutActivityType,
+    locationType: HKWorkoutSessionLocationType,
+    swimmingLocationType: HKWorkoutSwimmingLocationType?
+  ) throws {
+    // NOP
   }
 
   public func resume() {
