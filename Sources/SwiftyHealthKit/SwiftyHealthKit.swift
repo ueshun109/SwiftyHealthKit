@@ -101,12 +101,12 @@ public class SwiftyHealthKit {
   public func requestPermission(
     saveDataTypes: Set<HKSampleType>?,
     readDataTypes: Set<HKObjectType>?
-  ) -> Future<Bool, Error> {
+  ) -> Future<Bool, SwiftyHealthKitError> {
     Future { [weak self] completion in
       guard let self = self else { return }
       self.healthStore.requestAuthorization(toShare: saveDataTypes, read: readDataTypes) { result, error in
-        guard let error = error else { completion(.success(result)); return }
-        completion(.failure(error))
+        guard error != nil else { completion(.success(result)); return }
+        completion(.failure(SwiftyHealthKitError.denied))
         logger.log("Denied access to health care data.")
       }
     }
