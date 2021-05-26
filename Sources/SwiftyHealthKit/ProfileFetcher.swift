@@ -24,7 +24,7 @@ public enum Sex: Int, Equatable {
   case other
 }
 
-public struct Profile {
+public struct Profile: Equatable {
   var birthDate: DateComponents?
   var height: Double?
   var sex: Sex?
