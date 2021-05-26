@@ -25,10 +25,10 @@ public enum Sex: Int, Equatable {
 }
 
 public struct Profile: Equatable {
-  var birthDate: DateComponents?
-  var height: Double?
-  var sex: Sex?
-  var weight: Double?
+  public var birthDate: DateComponents?
+  public var height: Double?
+  public var sex: Sex?
+  public var weight: Double?
 }
 
 public struct ProfileFetcher {

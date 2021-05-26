@@ -9,6 +9,8 @@ internal let healthStore = HKHealthStore()
 public struct SwiftyHealthKit {
   public typealias HeartRateArg = (Date, Date, HKStatisticsOptions, HKWorkoutActivityType)
 
+  /// Request authorization. Pass save data type and read data type as argument.
+  public var authorization: (Set<HKSampleType>?, Set<HKObjectType>?) -> AnyPublisher<Bool, SwiftyHealthKitError>
   public var heartRateDuringWorkout: (HeartRateFetcher.Arguments) -> AnyPublisher<[HeartRateFetcher.Response], SwiftyHealthKitError>
   public var isAvailable: () -> Bool
   public var profile: (Set<ProfileType>) -> AnyPublisher<Profile, SwiftyHealthKitError>
@@ -17,6 +19,12 @@ public struct SwiftyHealthKit {
 
 public extension SwiftyHealthKit {
   static let live = Self(
+    authorization: { saveDataType, readDataType in
+      let authorization: Authorization = .live
+      return authorization.request(saveDataType, readDataType)
+        .mapError { $0 }
+        .eraseToAnyPublisher()
+    },
     heartRateDuringWorkout: { startDate, endDate, options, activityType in
       let authorization: Authorization = .live
       let heartRate: HeartRateFetcher = .live
