@@ -3,7 +3,9 @@ import Foundation
 public enum SwiftyHealthKitError: Equatable, LocalizedError {
   case denied
   case liveWorkout(NSError)
+  case notFound
   case query(NSError)
+  case requestAuthorized(NSError)
   case session(NSError)
   case swimmingSession
   case unavailable
@@ -14,7 +16,11 @@ public enum SwiftyHealthKitError: Equatable, LocalizedError {
       return "Access to health data is not allowed."
     case let .liveWorkout(error):
       return error.localizedDescription
+    case .notFound:
+      return "Not found"
     case let .query(error):
+      return error.localizedDescription
+    case let .requestAuthorized(error):
       return error.localizedDescription
     case let .session(error):
       return error.localizedDescription

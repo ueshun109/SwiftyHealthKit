@@ -2,6 +2,41 @@ import Combine
 import HealthKit
 import os
 
+//public struct LiveWorkout2 {
+//
+//}
+//
+//public struct LiveWorkoutFetcher {
+//  public var data: (HKWorkoutSession) -> CurrentValueSubject<LiveWorkout2, Never>
+//  public var sessionState: (HKWorkoutSession) -> Future<HKWorkoutSessionState, SwiftyHealthKitError>
+//}
+//
+//private struct Dependency {
+//  var delegate: WorkoutSessionDelegate
+//  var subscriber: CurrentValueSubject<LiveWorkout2, Never>
+//}
+//private var dependencies: [Dependency] = []
+//
+//public extension LiveWorkoutFetcher {
+//  static let live = Self(
+//    data: { session in
+//      let value = CurrentValueSubject<LiveWorkout2, Never>(LiveWorkout2())
+//
+//    },
+//    sessionState: { session in
+//
+//    }
+//  )
+//}
+//
+//class WorkoutSessionDelegate: NSObject, HKWorkoutSessionDelegate {
+//  let didChangeState: (HKWorkoutSessionState) -> Void
+//
+//  init(didChangeState: @escaping (HKWorkoutSessionState) -> Void) {
+//    self.didChangeState = didChangeState
+//    super.init()
+//  }
+//}
 #if os(watchOS)
 public struct LiveWorkoutData: Equatable {
   public var activeCalories: Double = 0
