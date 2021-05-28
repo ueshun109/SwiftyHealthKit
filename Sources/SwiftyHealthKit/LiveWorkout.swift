@@ -59,7 +59,7 @@ public struct LiveWorkoutData: Equatable {
 public protocol LiveWorkoutProtocol {
   var data: CurrentValueSubject<LiveWorkoutData, Never> { get }
   var sessionState: PassthroughSubject<HKWorkoutSessionState, Error> { get }
-  func add(_ metaData: [String: Any]) -> Future<Bool, SwiftyHealthKitError>
+  func addEvent(_ metaData: [String: Any]) -> Future<Bool, SwiftyHealthKitError>
   func end()
   func pause()
   func reset(
@@ -110,7 +110,6 @@ public class LiveWorkout: NSObject, LiveWorkoutProtocol {
         healthStore: healthStore,
         configuration: workoutConfiguration
       )
-      workoutSession.prepare()
       liveWorkoutBuilder = workoutSession.associatedWorkoutBuilder()
     } catch {
       throw SwiftyHealthKitError.session(error as NSError)
@@ -126,13 +125,12 @@ public class LiveWorkout: NSObject, LiveWorkoutProtocol {
     )
   }
 
-  public func add(_ metaData: [String: Any]) -> Future<Bool, SwiftyHealthKitError> {
+  public func addEvent(_ metaData: [String: Any]) -> Future<Bool, SwiftyHealthKitError> {
     Future { [weak self] completion in
-      self?.liveWorkoutBuilder.addMetadata(metaData) { success, error in
-        if let error = error {
-          completion(.failure(.liveWorkout(error as NSError)))
-          return
-        }
+      guard let self = self else { return }
+      let event = HKWorkoutEvent(type: .marker, dateInterval: DateInterval(), metadata: metaData)
+      self.liveWorkoutBuilder.addWorkoutEvents([event]) { success, error in
+        if let error = error { completion(.failure(.liveWorkout(error as NSError))); return }
         completion(.success(success))
       }
     }
@@ -240,7 +238,6 @@ public class LiveWorkout: NSObject, LiveWorkoutProtocol {
         healthStore: healthStore,
         configuration: configuration
       )
-      workoutSession.prepare()
       liveWorkoutBuilder = workoutSession.associatedWorkoutBuilder()
     } catch {
       throw SwiftyHealthKitError.session(error as NSError)
@@ -315,7 +312,7 @@ public class LiveWorkoutMock: NSObject, LiveWorkoutProtocol {
   public var sessionState = PassthroughSubject<HKWorkoutSessionState, Error>()
   private var timer: Timer?
 
-  public func add(_ metaData: [String : Any]) -> Future<Bool, SwiftyHealthKitError> {
+  public func addEvent(_ metaData: [String : Any]) -> Future<Bool, SwiftyHealthKitError> {
     Future { completion in
       completion(.failure(.unavailable))
     }

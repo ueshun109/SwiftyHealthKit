@@ -2,7 +2,7 @@ import Combine
 import HealthKit
 
 public struct WorkoutFetcher {
-  var workouts: (HKWorkoutActivityType, Date, Date) -> Future<[HKWorkout], Error>
+  public var workouts: (HKWorkoutActivityType, Date, Date) -> Future<[HKWorkout], Error>
 
   /// Get metadata for workouts related to addition
   /// - Parameters:
@@ -10,7 +10,7 @@ public struct WorkoutFetcher {
   ///   - groupUnit: A unit that organizes data with DateComponent
   ///   - key: Dictionary key where metadata is stored
   /// - Returns: Dictionary
-  public func metadata<T: AdditiveArithmetic>(
+  public func metadataFromEvent<T: AdditiveArithmetic>(
     associatedWith workouts: [HKWorkout],
     groupUnit: Set<Calendar.Component>,
     key: String
@@ -18,13 +18,16 @@ public struct WorkoutFetcher {
     let calendar = Calendar.current
     var collections: [DateComponents: T?] = [:]
     workouts.forEach { workout in
-      guard let metadata = workout.metadata else { return }
-      let date = workout.startDate
-      let unit = calendar.dateComponents(groupUnit, from: date)
-      if let value1 = collections[unit] as? T, let value2 = metadata[key] as? T {
-        collections[unit] = value1 + value2
-      } else {
-        collections[unit] = metadata[key] as? T
+      guard let events = workout.workoutEvents else { return }
+      events.forEach { event in
+        guard let metadata = event.metadata else { return }
+        let date = workout.startDate
+        let unit = calendar.dateComponents(groupUnit, from: date)
+        if let value1 = collections[unit] as? T, let value2 = metadata[key] as? T {
+          collections[unit] = value1 + value2
+        } else {
+          collections[unit] = metadata[key] as? T
+        }
       }
     }
     return Just(collections)
