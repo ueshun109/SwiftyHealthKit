@@ -21,7 +21,7 @@ public struct LiveWorkout: Equatable {
   }
 }
 
-public enum LiveWorkoutSessionState {
+public enum LiveWorkoutSessionState: Equatable {
   case notStarted(Date?)
   case prepared(Date?)
   case running(Date?)
@@ -98,13 +98,13 @@ public extension LiveWorkoutFetcher {
         case .running:
           me.sessionState.send(LiveWorkoutSessionState(state: .running, date: me.workoutSession.startDate))
         case .ended:
-          me.sessionState.send(LiveWorkoutSessionState(state: .ended, date: me.workoutSession.endDate))
           me.liveWorkoutBuilder.endCollection(withEnd: Date()) { _, error in
             if let error = error { logger.error("\(error.localizedDescription)"); return }
             me.liveWorkoutBuilder.finishWorkout { workout, error in
               guard let error = error else {
                 logger.debug("End workout session.")
                 me.liveData.send(completion: .finished)
+                me.sessionState.send(LiveWorkoutSessionState(state: .ended, date: me.workoutSession.endDate))
                 return
               }
               logger.error("\(error.localizedDescription)")
