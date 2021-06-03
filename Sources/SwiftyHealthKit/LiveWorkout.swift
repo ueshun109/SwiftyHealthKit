@@ -2,43 +2,8 @@ import Combine
 import HealthKit
 import os
 
-//public struct LiveWorkout2 {
-//
-//}
-//
-//public struct LiveWorkoutFetcher {
-//  public var data: (HKWorkoutSession) -> CurrentValueSubject<LiveWorkout2, Never>
-//  public var sessionState: (HKWorkoutSession) -> Future<HKWorkoutSessionState, SwiftyHealthKitError>
-//}
-//
-//private struct Dependency {
-//  var delegate: WorkoutSessionDelegate
-//  var subscriber: CurrentValueSubject<LiveWorkout2, Never>
-//}
-//private var dependencies: [Dependency] = []
-//
-//public extension LiveWorkoutFetcher {
-//  static let live = Self(
-//    data: { session in
-//      let value = CurrentValueSubject<LiveWorkout2, Never>(LiveWorkout2())
-//
-//    },
-//    sessionState: { session in
-//
-//    }
-//  )
-//}
-//
-//class WorkoutSessionDelegate: NSObject, HKWorkoutSessionDelegate {
-//  let didChangeState: (HKWorkoutSessionState) -> Void
-//
-//  init(didChangeState: @escaping (HKWorkoutSessionState) -> Void) {
-//    self.didChangeState = didChangeState
-//    super.init()
-//  }
-//}
 #if os(watchOS)
-public struct LiveWorkoutData: Equatable {
+public struct LiveWorkout: Equatable {
   public var activeCalories: Double = 0
   public var distance: Double = 0
   public var heartRate: Double = 0
@@ -56,242 +21,207 @@ public struct LiveWorkoutData: Equatable {
   }
 }
 
-public protocol LiveWorkoutProtocol {
-  var data: CurrentValueSubject<LiveWorkoutData, Never> { get }
-  var sessionState: PassthroughSubject<HKWorkoutSessionState, Error> { get }
-  func addEvent(_ metaData: [String: Any]) -> Future<Bool, SwiftyHealthKitError>
-  func end()
-  func pause()
-  func reset(
-    activityType: HKWorkoutActivityType,
-    locationType: HKWorkoutSessionLocationType,
-    swimmingLocationType: HKWorkoutSwimmingLocationType?
-  ) throws
-  func resume()
-  func start()
-  func stop()
+public enum LiveWorkoutSessionState {
+  case notStarted(Date?)
+  case prepared(Date?)
+  case running(Date?)
+  case paused(Date?)
+  case stopped(Date?)
+  case ended(Date?)
+
+  init(state: HKWorkoutSessionState, date: Date?) {
+    switch state {
+    case .notStarted:
+      self = .notStarted(date)
+    case .prepared:
+      self = .prepared(date)
+    case .running:
+      self = .running(date)
+    case .paused:
+      self = .running(date)
+    case .stopped:
+      self = .stopped(date)
+    case .ended:
+      self = .ended(date)
+    @unknown default:
+      fatalError()
+    }
+  }
 }
 
-public class LiveWorkout: NSObject, LiveWorkoutProtocol {
-  public private(set) var data = CurrentValueSubject<LiveWorkoutData, Never>(LiveWorkoutData())
-  public private(set) var sessionState = PassthroughSubject<HKWorkoutSessionState, Error>()
+/// To work with this class, enable the background mode of the capability of the Watch Extension target.
+public class LiveWorkoutFetcher {
+  public typealias StartArgs = (AnyHashable, HKWorkoutActivityType, HKWorkoutSessionLocationType) -> Void
 
-  private let healthStore: HKHealthStore
-  private var activityType: HKWorkoutActivityType
-  private var liveWorkoutBuilder: HKLiveWorkoutBuilder
-  private var locationType: HKWorkoutSessionLocationType
-  private var swimmingLocationType: HKWorkoutSwimmingLocationType?
-  private var workoutConfiguration: HKWorkoutConfiguration
-  private var workoutSession: HKWorkoutSession
+  public private(set) var liveData: CurrentValueSubject<LiveWorkout, SwiftyHealthKitError>!
+  public private(set) var sessionState = PassthroughSubject<LiveWorkoutSessionState, Never>()
+  private var workoutSession: HKWorkoutSession!
+  private var liveWorkoutBuilder: HKLiveWorkoutBuilder!
 
-  public init(
-    activityType: HKWorkoutActivityType,
-    healthStore: HKHealthStore,
-    locationType: HKWorkoutSessionLocationType,
-    swimmingLocationType: HKWorkoutSwimmingLocationType? = nil
-  ) throws {
-    self.activityType = activityType
-    self.healthStore = healthStore
-    self.locationType = locationType
-    self.swimmingLocationType = swimmingLocationType
-
-    if activityType == .swimming && swimmingLocationType == nil { throw SwiftyHealthKitError.swimmingSession }
-
-    workoutConfiguration = HKWorkoutConfiguration()
-    workoutConfiguration.activityType = activityType
-    workoutConfiguration.locationType = locationType
-    if let swimmingLocationType = swimmingLocationType {
-      workoutConfiguration.swimmingLocationType = swimmingLocationType
-      workoutConfiguration.lapLength = HKQuantity(unit: .meter(), doubleValue: 25)
-    }
-
-    do {
-      workoutSession = try HKWorkoutSession(
-        healthStore: healthStore,
-        configuration: workoutConfiguration
-      )
-      liveWorkoutBuilder = workoutSession.associatedWorkoutBuilder()
-    } catch {
-      throw SwiftyHealthKitError.session(error as NSError)
-    }
-
-    super.init()
-
-    self.workoutSession.delegate = self
-    self.liveWorkoutBuilder.delegate = self
-    self.liveWorkoutBuilder.dataSource = HKLiveWorkoutDataSource(
-      healthStore: healthStore,
-      workoutConfiguration: workoutConfiguration
-    )
+  public var add: ([String: Any]) -> Void = { _ in
+    fatalError("Must implementation")
   }
 
-  public func addEvent(_ metaData: [String: Any]) -> Future<Bool, SwiftyHealthKitError> {
-    Future { [weak self] completion in
-      guard let self = self else { return }
-      let event = HKWorkoutEvent(type: .marker, dateInterval: DateInterval(), metadata: metaData)
-      self.liveWorkoutBuilder.addWorkoutEvents([event]) { success, error in
-        if let error = error { completion(.failure(.liveWorkout(error as NSError))); return }
-        completion(.success(success))
+  public var end: (AnyHashable) -> Void = { _ in
+    fatalError("Must implementation")
+  }
+
+  public var start: StartArgs = { _, _, _ in
+    fatalError("Must implementation")
+  }
+}
+
+public extension LiveWorkoutFetcher {
+  static let live: LiveWorkoutFetcher = { () -> LiveWorkoutFetcher in
+    var me = LiveWorkoutFetcher()
+
+    me.add = { metaData in
+      me.liveWorkoutBuilder.addMetadata(metaData) { result, error in
+        guard let error = error else { logger.log("Added metadata: \(result)"); return }
+        logger.error("\(error.localizedDescription)")
       }
     }
-  }
 
-  public func end() {
-    data.value = LiveWorkoutData()
-    workoutSession.end()
-  }
+    me.start = { id, activityType, locationType in
+      me.liveData = CurrentValueSubject<LiveWorkout, SwiftyHealthKitError>(LiveWorkout())
+      let configuration = HKWorkoutConfiguration()
+      configuration.activityType = activityType
+      configuration.locationType = locationType
+      me.workoutSession = try? HKWorkoutSession(
+        healthStore: healthStore,
+        configuration: configuration
+      )
+      me.liveWorkoutBuilder = me.workoutSession.associatedWorkoutBuilder()
 
-  public func pause() {
-    workoutSession.pause()
-    logger.debug("Pause workout session.")
-  }
+      let sessionSubscriber: (HKWorkoutSessionState) -> Void = { toState in
+        switch toState {
+        case .running:
+          me.sessionState.send(LiveWorkoutSessionState(state: .running, date: me.workoutSession.startDate))
+        case .ended:
+          me.sessionState.send(LiveWorkoutSessionState(state: .ended, date: me.workoutSession.endDate))
+          me.liveWorkoutBuilder.endCollection(withEnd: Date()) { _, error in
+            if let error = error { logger.error("\(error.localizedDescription)"); return }
+            me.liveWorkoutBuilder.finishWorkout { workout, error in
+              guard let error = error else {
+                logger.debug("End workout session.")
+                me.liveData.send(completion: .finished)
+                return
+              }
+              logger.error("\(error.localizedDescription)")
+              me.liveData.send(completion: .failure(SwiftyHealthKitError.session(error as NSError)))
+              dependencies[id] = nil
+            }
+          }
+        default: break
+        }
+      }
 
-  public func reset(
-    activityType: HKWorkoutActivityType,
-    locationType: HKWorkoutSessionLocationType,
-    swimmingLocationType: HKWorkoutSwimmingLocationType? = nil
-  ) throws {
-    try configureWorkoutConfiguration(
-      activityType: activityType,
-      healthStore: healthStore,
-      locationType: locationType,
-      swimmingLocationType: swimmingLocationType
-    )
-    try configureWorkoutSession(
-      configuration: workoutConfiguration,
-      healthStore: healthStore
-    )
-  }
+      let builderSubscriber: (HKStatistics) -> Void = { statistics in
+        let value = me.analyze(statistics: statistics)
+        switch statistics.quantityType {
+        case HKQuantityType.quantityType(forIdentifier: .heartRate):
+          me.liveData.value.update(heartRate: value)
+        case HKQuantityType.quantityType(forIdentifier: .activeEnergyBurned):
+          me.liveData.value.update(activeCalories: value)
+        case HKQuantityType.quantityType(forIdentifier: .distanceSwimming),
+             HKQuantityType.quantityType(forIdentifier: .distanceWalkingRunning):
+          me.liveData.value.update(distance: value)
+        default: break
+        }
+      }
 
-  public func resume() {
-    workoutSession.resume()
-    logger.debug("Resume workout session.")
-  }
+      let sessionDelegate = LiveWorkoutSessionDelegate(sessionSubscriber)
+      let builderDelegate = LiveWorkoutBuilderDelegate(builderSubscriber)
+      dependencies[id] = Dependencies(sessionDelegate: sessionDelegate, builderDelegate: builderDelegate)
+      me.workoutSession.delegate = sessionDelegate
+      me.liveWorkoutBuilder.delegate = builderDelegate
+      me.liveWorkoutBuilder.dataSource = .init(healthStore: healthStore, workoutConfiguration: configuration)
 
-  public func start() {
-    workoutSession.startActivity(with: Date())
-    liveWorkoutBuilder.beginCollection(withStart: Date()) { [weak self] _, error in
-      if let error = error {
-        self?.sessionState.send(completion: .failure(error))
-        logger.error("\(error.localizedDescription)")
-      } else {
+      me.workoutSession.startActivity(with: Date())
+      me.liveWorkoutBuilder.beginCollection(withStart: Date()) { _, error in
+        if let error = error { logger.error("\(error.localizedDescription)"); return }
         logger.debug("Start collecting workout data.")
       }
     }
-  }
 
-  public func stop() {
-    data.value = LiveWorkoutData()
-    workoutSession.stopActivity(with: Date())
-  }
+    me.end = { id in
+      me.workoutSession.end()
+    }
 
-  private func analyze(statistics: HKStatistics) {
+    return me
+  }()
+}
+
+private extension LiveWorkoutFetcher {
+  func analyze(statistics: HKStatistics) -> Double {
     switch statistics.quantityType {
     case HKQuantityType.quantityType(forIdentifier: .heartRate):
       let heartRateUnit = HKUnit.count().unitDivided(by: HKUnit.minute())
       let value = statistics.mostRecentQuantity()?.doubleValue(for: heartRateUnit)
-      data.value.update(heartRate: Double( round( 1 * value! ) / 1 ))
+      return Double(round( 1 * value! ) / 1 )
 
     case HKQuantityType.quantityType(forIdentifier: .activeEnergyBurned):
       let energyUnit = HKUnit.kilocalorie()
       let value = statistics.sumQuantity()?.doubleValue(for: energyUnit)
-      data.value.update(activeCalories: Double( round( 1 * value! ) / 1 ))
+      return Double(round( 1 * value! ) / 1 )
 
     case HKQuantityType.quantityType(forIdentifier: .distanceSwimming),
          HKQuantityType.quantityType(forIdentifier: .distanceWalkingRunning):
       let meterUnit = HKUnit.meter()
       let value = statistics.sumQuantity()?.doubleValue(for: meterUnit)
-      data.value.update(distance: Double( round( 1 * value! ) / 1 ))
+      return Double(round( 1 * value! ) / 1 )
 
     default:
-      break
+      return 0
     }
   }
 
-  private func configureWorkoutConfiguration(
-    activityType: HKWorkoutActivityType,
-    healthStore: HKHealthStore,
-    locationType: HKWorkoutSessionLocationType,
-    swimmingLocationType: HKWorkoutSwimmingLocationType? = nil
-  ) throws {
-    self.activityType = activityType
-    self.locationType = locationType
-    self.swimmingLocationType = swimmingLocationType
-
-    if activityType == .swimming && swimmingLocationType == nil { throw SwiftyHealthKitError.swimmingSession }
-
-    workoutConfiguration = HKWorkoutConfiguration()
-    workoutConfiguration.activityType = activityType
-    workoutConfiguration.locationType = locationType
-    if let swimmingLocationType = swimmingLocationType {
-      workoutConfiguration.swimmingLocationType = swimmingLocationType
-      workoutConfiguration.lapLength = HKQuantity(unit: .meter(), doubleValue: 25)
-    }
-  }
-
-  private func configureWorkoutSession(
-    configuration: HKWorkoutConfiguration,
-    healthStore: HKHealthStore
-  ) throws {
-    do {
-      workoutSession = try HKWorkoutSession(
-        healthStore: healthStore,
-        configuration: configuration
-      )
-      liveWorkoutBuilder = workoutSession.associatedWorkoutBuilder()
-    } catch {
-      throw SwiftyHealthKitError.session(error as NSError)
-    }
-
-    self.workoutSession.delegate = self
-    self.liveWorkoutBuilder.delegate = self
-    self.liveWorkoutBuilder.dataSource = HKLiveWorkoutDataSource(
-      healthStore: healthStore,
-      workoutConfiguration: configuration
-    )
-  }
 }
 
-extension LiveWorkout: HKWorkoutSessionDelegate {
-  public func workoutSession(
-    _ workoutSession: HKWorkoutSession,
-    didFailWithError error: Error
-  ) {
-    sessionState.send(completion: .failure(error))
-    logger.error("\(error.localizedDescription)")
+private struct Dependencies {
+  let sessionDelegate: LiveWorkoutSessionDelegate
+  let builderDelegate: LiveWorkoutBuilderDelegate
+}
+
+private var dependencies: [AnyHashable: Dependencies] = [:]
+
+// MARK: - HKWorkoutSessionDelegate
+
+private class LiveWorkoutSessionDelegate: NSObject, HKWorkoutSessionDelegate {
+  let subscriber: (HKWorkoutSessionState) -> Void
+
+  init(_ subscriber: @escaping (HKWorkoutSessionState) -> Void) {
+    self.subscriber = subscriber
   }
 
-  public func workoutSession(
+  func workoutSession(
     _ workoutSession: HKWorkoutSession,
     didChangeTo toState: HKWorkoutSessionState,
     from fromState: HKWorkoutSessionState,
     date: Date
   ) {
-    sessionState.send(toState)
-    if toState == .ended {
-      liveWorkoutBuilder.endCollection(withEnd: Date()) { [weak self] _, error in
-        if let error = error {
-          self?.sessionState.send(completion: .failure(error))
-          logger.error("\(error.localizedDescription)")
-          return
-        }
-        self?.liveWorkoutBuilder.finishWorkout { workout, error in
-          if let error = error {
-            self?.sessionState.send(completion: .failure(error))
-            logger.error("\(error.localizedDescription)")
-          } else {
-            logger.debug("End workout session.")
-          }
-        }
-      }
-    }
-    let logMessage = "Workout session state changed from \(fromState.rawValue) to \(toState.rawValue)"
-    logger.debug("\(logMessage)")
+    logger.log("Workout session state changed from \(fromState.rawValue) to \(toState.rawValue)")
+    subscriber(toState)
+  }
+
+  func workoutSession(
+    _ workoutSession: HKWorkoutSession,
+    didFailWithError error: Error
+  ) {
+    logger.error("\(error.localizedDescription)")
   }
 }
 
-extension LiveWorkout: HKLiveWorkoutBuilderDelegate {
-  public func workoutBuilder(
+// MARK: - HKLiveWorkoutBuilderDelegate
+
+private class LiveWorkoutBuilderDelegate: NSObject, HKLiveWorkoutBuilderDelegate {
+  let subscriber: (HKStatistics) -> Void
+
+  init(_ subscriber: @escaping (HKStatistics) -> Void) {
+    self.subscriber = subscriber
+  }
+
+  func workoutBuilder(
     _ workoutBuilder: HKLiveWorkoutBuilder,
     didCollectDataOf collectedTypes: Set<HKSampleType>
   ) {
@@ -299,70 +229,11 @@ extension LiveWorkout: HKLiveWorkoutBuilderDelegate {
       guard let quantityType = type as? HKQuantityType,
             let statistics = workoutBuilder.statistics(for: quantityType)
       else { return }
-      analyze(statistics: statistics)
+      subscriber(statistics)
     }
   }
 
-  public func workoutBuilderDidCollectEvent(_ workoutBuilder: HKLiveWorkoutBuilder) {
-  }
-}
-
-public class LiveWorkoutMock: NSObject, LiveWorkoutProtocol {
-  public var data = CurrentValueSubject<LiveWorkoutData, Never>(LiveWorkoutData())
-  public var sessionState = PassthroughSubject<HKWorkoutSessionState, Error>()
-  private var timer: Timer?
-
-  public func addEvent(_ metaData: [String : Any]) -> Future<Bool, SwiftyHealthKitError> {
-    Future { completion in
-      completion(.failure(.unavailable))
-    }
-  }
-
-  public func end() {
-    stopTimer()
-  }
-
-  public func pause() {
-    stopTimer()
-  }
-
-  public func reset(
-    activityType: HKWorkoutActivityType,
-    locationType: HKWorkoutSessionLocationType,
-    swimmingLocationType: HKWorkoutSwimmingLocationType?
-  ) throws {
-    // NOP
-  }
-
-  public func resume() {
-    startTimer()
-  }
-
-  public func start() {
-    startTimer()
-  }
-
-  public func stop() {
-    stopTimer()
-  }
-
-  private func startTimer() {
-    timer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] timer in
-      guard let self = self else { return }
-      let activeEnergyBurned = self.data.value.activeCalories + 1
-      let distance = self.data.value.distance + 3
-      let heartRate = Double.random(in: 60...100)
-      self.data.value.update(
-        activeCalories: activeEnergyBurned,
-        distance: distance,
-        heartRate: heartRate
-      )
-    }
-    timer?.fire()
-  }
-
-  private func stopTimer() {
-    timer?.invalidate()
+  func workoutBuilderDidCollectEvent(_ workoutBuilder: HKLiveWorkoutBuilder) {
   }
 }
 #endif

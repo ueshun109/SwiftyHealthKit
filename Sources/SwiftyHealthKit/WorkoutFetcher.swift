@@ -61,7 +61,6 @@ public extension WorkoutFetcher {
   static let live = Self(
     workouts: { activityType, startDate, endDate in
       Future { completion in
-        let healthStore = HKHealthStore()
         let workoutPredicate = HKQuery.predicateForWorkouts(with: activityType)
         let samplePredicate = HKQuery.predicateForSamples(withStart: startDate, end: endDate, options: .strictStartDate)
         let compoundPredicate = NSCompoundPredicate(andPredicateWithSubpredicates: [workoutPredicate, samplePredicate])
