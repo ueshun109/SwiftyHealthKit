@@ -2,7 +2,7 @@ import Combine
 import HealthKit
 
 public struct WorkoutFetcher {
-  public var workouts: (HKWorkoutActivityType, Date, Date) -> Future<[HKWorkout], Error>
+  public var workouts: (HKWorkoutActivityType, Date, Date) -> Future<[HKWorkout], SwiftyHealthKitError>
 
   /// Get metadata for workouts related to addition
   /// - Parameters:
@@ -71,7 +71,10 @@ public extension WorkoutFetcher {
           limit: HKObjectQueryNoLimit,
           sortDescriptors: [sortDescriptor]
         ) { query, samples, error in
-          guard let workouts = samples as? [HKWorkout], error == nil else { completion(.failure(error!)); return }
+          guard let workouts = samples as? [HKWorkout], error == nil else {
+            completion(.failure(.query(error! as NSError)))
+            return
+          }
           completion(.success(workouts))
         }
         healthStore.execute(query)
