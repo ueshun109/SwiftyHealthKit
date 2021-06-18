@@ -15,7 +15,7 @@ public struct SwiftyHealthKit {
   public var isAvailable: () -> Bool
   public var profile: (Set<ProfileType>) -> AnyPublisher<Profile, SwiftyHealthKitError>
   public var workout: (Date, Date, HKWorkoutActivityType) -> AnyPublisher<[HKWorkout], SwiftyHealthKitError>
-  public var burnedActiveCalories: (Date, Date, Date, DateComponents, HKStatisticsOptions, Bool) -> AnyPublisher<[Double], SwiftyHealthKitError>
+  public var burnedActiveCalories: (Date, Date, Date, DateComponents, HKStatisticsOptions, Bool) -> AnyPublisher<[BurnedCalories], SwiftyHealthKitError>
 }
 
 public extension SwiftyHealthKit {
