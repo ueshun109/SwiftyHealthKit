@@ -15,6 +15,7 @@ public struct SwiftyHealthKit {
   public var isAvailable: () -> Bool
   public var profile: (Set<ProfileType>) -> AnyPublisher<Profile, SwiftyHealthKitError>
   public var workout: (Date, Date, HKWorkoutActivityType) -> AnyPublisher<[HKWorkout], SwiftyHealthKitError>
+  public var burnedActiveCalories: (Date, Date, Date, DateComponents, HKStatisticsOptions, Bool) -> AnyPublisher<[Double], SwiftyHealthKitError>
 }
 
 public extension SwiftyHealthKit {
@@ -79,6 +80,18 @@ public extension SwiftyHealthKit {
         .mapError { $0 }
         .flatMap { _ in workout.workouts(activityType, startDate, endDate) }
         .mapError { error in SwiftyHealthKitError.query(error as NSError) }
+        .eraseToAnyPublisher()
+    },
+    burnedActiveCalories: { anchorDate, startDate, endDate, interval, options, ownAppOnly in
+      let authorization: Authorization = .live
+      let burnedCaloriesFetcher: BurnedCaloriesFetcher = .live
+      let calorieType = HKObjectType.quantityType(forIdentifier: .activeEnergyBurned)!
+      return authorization.request(nil, [calorieType])
+        .mapError { $0 }
+        .flatMap { _ in
+          burnedCaloriesFetcher.burnedCalories(anchorDate, startDate, endDate, interval, options, ownAppOnly)
+        }
+        .mapError { $0 }
         .eraseToAnyPublisher()
     }
   )
