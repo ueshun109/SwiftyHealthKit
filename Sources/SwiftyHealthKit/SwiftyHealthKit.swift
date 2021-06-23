@@ -14,7 +14,7 @@ public struct SwiftyHealthKit {
   public var heartRateDuringWorkout: (HeartRateFetcher.Arguments) -> AnyPublisher<[HeartRateFetcher.Response], SwiftyHealthKitError>
   public var isAvailable: () -> Bool
   public var profile: (Set<ProfileType>) -> AnyPublisher<Profile, SwiftyHealthKitError>
-  public var workout: (Date, Date, HKWorkoutActivityType) -> AnyPublisher<[HKWorkout], SwiftyHealthKitError>
+  public var workout: (HKWorkoutActivityType, Date?, Date?, Bool) -> AnyPublisher<[HKWorkout], SwiftyHealthKitError>
   public var burnedActiveCalories: (Date, Date, Date, DateComponents, HKStatisticsOptions, Bool) -> AnyPublisher<[BurnedCalories], SwiftyHealthKitError>
 }
 
@@ -26,7 +26,7 @@ public extension SwiftyHealthKit {
         .mapError { $0 }
         .eraseToAnyPublisher()
     },
-    heartRateDuringWorkout: { startDate, endDate, options, activityType in
+    heartRateDuringWorkout: { startDate, endDate, options, activityType, ownAppOnly in
       let authorization: Authorization = .live
       let heartRate: HeartRateFetcher = .live
       let workout: WorkoutFetcher = .live
@@ -34,7 +34,7 @@ public extension SwiftyHealthKit {
       let heartRateType = HKObjectType.quantityType(forIdentifier: .heartRate)!
       return authorization.request(nil, [workoutType, heartRateType])
         .mapError { $0 }
-        .flatMap { _ in workout.workouts(activityType, startDate, endDate) }
+        .flatMap { _ in workout.workouts(activityType, startDate, endDate, ownAppOnly) }
         .mapError { error in SwiftyHealthKitError.query(error as NSError) }
         .flatMap { workouts in heartRate.duringWorkout(workouts, options)}
         .mapError { error in SwiftyHealthKitError.query(error as NSError) }
@@ -72,13 +72,13 @@ public extension SwiftyHealthKit {
         }
         .eraseToAnyPublisher()
     },
-    workout: { startDate, endDate, activityType in
+    workout: { activityType, startDate, endDate, ownAppOnly in
       let authorization: Authorization = .live
       let workout: WorkoutFetcher = .live
       let workoutType = HKWorkoutType.workoutType()
       return authorization.request(nil, [workoutType])
         .mapError { $0 }
-        .flatMap { _ in workout.workouts(activityType, startDate, endDate) }
+        .flatMap { _ in workout.workouts(activityType, startDate, endDate, ownAppOnly) }
         .mapError { error in SwiftyHealthKitError.query(error as NSError) }
         .eraseToAnyPublisher()
     },

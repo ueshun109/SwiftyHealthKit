@@ -2,7 +2,8 @@ import Combine
 import HealthKit
 
 public struct WorkoutFetcher {
-  public var workouts: (HKWorkoutActivityType, Date, Date) -> Future<[HKWorkout], SwiftyHealthKitError>
+  /// Get workout data.
+  public var workouts: (HKWorkoutActivityType, Date?, Date?, Bool) -> Future<[HKWorkout], SwiftyHealthKitError>
 
   /// Get metadata for workouts related to addition
   /// - Parameters:
@@ -59,15 +60,19 @@ public struct WorkoutFetcher {
 
 public extension WorkoutFetcher {
   static let live = Self(
-    workouts: { activityType, startDate, endDate in
+    workouts: { activityType, startDate, endDate, ownAppOnly in
       Future { completion in
-        let workoutPredicate = HKQuery.predicateForWorkouts(with: activityType)
+        let compoundPredicate: (NSPredicate, NSPredicate?, NSPredicate) -> NSCompoundPredicate = { sample, source, workout in
+          guard let source = source else { return NSCompoundPredicate(andPredicateWithSubpredicates: [sample, workout]) }
+          return NSCompoundPredicate(andPredicateWithSubpredicates: [sample, source, workout])
+        }
         let samplePredicate = HKQuery.predicateForSamples(withStart: startDate, end: endDate, options: .strictStartDate)
-        let compoundPredicate = NSCompoundPredicate(andPredicateWithSubpredicates: [workoutPredicate, samplePredicate])
+        let sourcePredicate: NSPredicate? = ownAppOnly ? HKQuery.predicateForObjects(from: .default()) : nil
+        let workoutPredicate = HKQuery.predicateForWorkouts(with: activityType)
         let sortDescriptor = NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: false)
         let query = HKSampleQuery(
           sampleType: .workoutType(),
-          predicate: compoundPredicate,
+          predicate: compoundPredicate(samplePredicate, sourcePredicate, workoutPredicate),
           limit: HKObjectQueryNoLimit,
           sortDescriptors: [sortDescriptor]
         ) { query, samples, error in
@@ -85,7 +90,7 @@ public extension WorkoutFetcher {
 
 public extension WorkoutFetcher {
   static let mock = Self(
-    workouts: { _, _, _ in
+    workouts: { _, _, _, _ in
       Future { completion in
         let calendar = Calendar.current
         let workouts: [HKWorkout] = [

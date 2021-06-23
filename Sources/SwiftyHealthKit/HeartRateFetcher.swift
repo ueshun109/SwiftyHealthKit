@@ -2,11 +2,13 @@ import Combine
 import HealthKit
 
 public struct HeartRateFetcher {
-  public typealias Arguments = (Date, Date, HKStatisticsOptions, HKWorkoutActivityType)
+  public typealias Arguments = (Date, Date, HKStatisticsOptions, HKWorkoutActivityType, Bool)
   public typealias Response = (value: Double?, startDate: Date, endDate: Date)
 
-  /// Get bpm(beat per minutes) during workout
+  /// Get bpm(beat per minutes) during workout.
   public var duringWorkout: ([HKWorkout], HKStatisticsOptions) -> Future<[Response], SwiftyHealthKitError>
+  /// Monitor changes in heart rate.
+  public var liveHeartRate: (Date, DateComponents, HKStatisticsOptions) -> PassthroughSubject<Double, Never>
 }
 
 public extension HeartRateFetcher {
@@ -53,6 +55,38 @@ public extension HeartRateFetcher {
           healthStore.execute(query)
         }
       }
+    },
+    liveHeartRate: { anchorDate, timeInterval, options in
+      let query = HKStatisticsCollectionQuery(
+        quantityType: .quantityType(forIdentifier: .heartRate)!,
+        quantitySamplePredicate: nil,
+        options: options,
+        anchorDate: anchorDate,
+        intervalComponents: timeInterval
+      )
+      var startDate = anchorDate
+      let subject = PassthroughSubject<Double, Never>()
+      query.initialResultsHandler = { _, _, _ in }
+      query.statisticsUpdateHandler = { query, statistics, collection, error in
+        let endDate = Date()
+        collection?.enumerateStatistics(from: startDate, to: endDate) { stats, stop in
+          var value: Double?
+          switch options {
+          case .discreteAverage:
+            value = stats.averageQuantity()?.doubleValue(for: HKUnit(from: "count/min"))
+          case .discreteMax:
+            value = stats.maximumQuantity()?.doubleValue(for: HKUnit(from: "count/min"))
+          case .discreteMin:
+            value = stats.minimumQuantity()?.doubleValue(for: HKUnit(from: "count/min"))
+          default: break
+          }
+          guard let bpm = value else { return }
+          subject.send(bpm)
+          startDate = endDate
+        }
+      }
+      healthStore.execute(query)
+      return subject
     }
   )
 }
