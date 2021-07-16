@@ -3,72 +3,35 @@ import HealthKit
 import os
 
 #if os(watchOS)
-public struct LiveWorkout: Equatable {
-  public var activeCalories: Double = 0
-  public var distance: Double = 0
-  public var heartRate: Double = 0
-
-  public init() {}
-
-  public mutating func update(
-    activeCalories: Double? = nil,
-    distance: Double? = nil,
-    heartRate: Double? = nil
-  ) {
-    self.activeCalories = activeCalories ?? self.activeCalories
-    self.distance = distance ?? self.distance
-    self.heartRate = heartRate ?? self.heartRate
-  }
-}
-
-public enum LiveWorkoutSessionState: Equatable {
-  case notStarted(Date?)
-  case prepared(Date?)
-  case running(Date?)
-  case paused(Date?)
-  case stopped(Date?)
-  case ended(Date?)
-
-  init(state: HKWorkoutSessionState, date: Date?) {
-    switch state {
-    case .notStarted:
-      self = .notStarted(date)
-    case .prepared:
-      self = .prepared(date)
-    case .running:
-      self = .running(date)
-    case .paused:
-      self = .running(date)
-    case .stopped:
-      self = .stopped(date)
-    case .ended:
-      self = .ended(date)
-    @unknown default:
-      fatalError()
-    }
-  }
-}
-
 /// To work with this class, enable the background mode of the capability of the Watch Extension target.
 public class LiveWorkoutFetcher {
-  public typealias StartArgs = (AnyHashable, HKWorkoutActivityType, HKWorkoutSessionLocationType) -> Void
+  public typealias StartArgs = (
+    AnyHashable,
+    HKWorkoutActivityType,
+    HKWorkoutSessionLocationType,
+    HKWorkoutSwimmingLocationType?,
+    HKQuantity?
+  ) -> Void
 
-  public private(set) var liveData: CurrentValueSubject<LiveWorkout, SwiftyHealthKitError>!
+  /// Publish real-time workout information.
+  public private(set) var liveData: CurrentValueSubject<LiveWorkoutInformation, SwiftyHealthKitError>!
+  /// Publish workout session state.
   public private(set) var sessionState = PassthroughSubject<LiveWorkoutSessionState, Never>()
-  private var workoutSession: HKWorkoutSession!
-  private var liveWorkoutBuilder: HKLiveWorkoutBuilder!
-
+  /// Add metadata to `HKLiveWorkoutBuilder`.
   public var add: ([String: Any]) -> Void = { _ in
     fatalError("Must implementation")
   }
-
+  /// End workout session.
   public var end: (AnyHashable) -> Void = { _ in
     fatalError("Must implementation")
   }
-
-  public var start: StartArgs = { _, _, _ in
+  /// Start workout session.
+  public var start: StartArgs = { _, _, _, _, _ in
     fatalError("Must implementation")
   }
+
+  private var workoutSession: HKWorkoutSession!
+  private var liveWorkoutBuilder: HKLiveWorkoutBuilder!
 }
 
 public extension LiveWorkoutFetcher {
@@ -82,41 +45,9 @@ public extension LiveWorkoutFetcher {
       }
     }
 
-    me.start = { id, activityType, locationType in
-      me.liveData = CurrentValueSubject<LiveWorkout, SwiftyHealthKitError>(LiveWorkout())
-      let configuration = HKWorkoutConfiguration()
-      configuration.activityType = activityType
-      configuration.locationType = locationType
-      me.workoutSession = try? HKWorkoutSession(
-        healthStore: healthStore,
-        configuration: configuration
-      )
-      me.liveWorkoutBuilder = me.workoutSession.associatedWorkoutBuilder()
-
-      let sessionSubscriber: (HKWorkoutSessionState) -> Void = { toState in
-        switch toState {
-        case .running:
-          me.sessionState.send(LiveWorkoutSessionState(state: .running, date: me.workoutSession.startDate))
-        case .ended:
-          me.liveWorkoutBuilder.endCollection(withEnd: Date()) { _, error in
-            if let error = error { logger.error("\(error.localizedDescription)"); return }
-            me.liveWorkoutBuilder.finishWorkout { workout, error in
-              guard let error = error else {
-                logger.debug("End workout session.")
-                me.liveData.send(completion: .finished)
-                me.sessionState.send(LiveWorkoutSessionState(state: .ended, date: me.workoutSession.endDate))
-                return
-              }
-              logger.error("\(error.localizedDescription)")
-              me.liveData.send(completion: .failure(SwiftyHealthKitError.session(error as NSError)))
-              dependencies[id] = nil
-            }
-          }
-        default: break
-        }
-      }
-
-      let builderSubscriber: (HKStatistics) -> Void = { statistics in
+    me.start = { id, activityType, locationType, swimmingLocationType, lapLength in
+      /// Receive statistics data.
+      let statsReceiver: (HKStatistics) -> Void = { statistics in
         let value = me.analyze(statistics: statistics)
         switch statistics.quantityType {
         case HKQuantityType.quantityType(forIdentifier: .heartRate):
@@ -129,14 +60,56 @@ public extension LiveWorkoutFetcher {
         default: break
         }
       }
+      /// Receive session state changes.
+      let sessionStateReceiver: (HKWorkoutSessionState) -> Void = { toState in
+        switch toState {
+        case .running:
+          me.sessionState.send(.init(state: .running, date: me.workoutSession.startDate))
+        case .ended:
+          me.liveWorkoutBuilder.endCollection(withEnd: Date()) { _, error in
+            if let error = error { logger.error("\(error.localizedDescription)"); return }
+            me.liveWorkoutBuilder.finishWorkout { workout, error in
+              guard let error = error else {
+                logger.debug("End workout session.")
+                me.liveData.send(completion: .finished)
+                me.sessionState.send(.init(state: .ended, date: me.workoutSession.endDate))
+                return
+              }
+              logger.error("\(error.localizedDescription)")
+              me.liveData.send(completion: .failure(SwiftyHealthKitError.session(error as NSError)))
+              dependencies[id] = nil
+            }
+          }
+        default: break
+        }
+      }
+      let builderDelegate = LiveWorkoutBuilderDelegate(statsReceiver)
+      let sessionDelegate = LiveWorkoutSessionDelegate(sessionStateReceiver)
+      let configuration = HKWorkoutConfiguration()
 
-      let sessionDelegate = LiveWorkoutSessionDelegate(sessionSubscriber)
-      let builderDelegate = LiveWorkoutBuilderDelegate(builderSubscriber)
-      dependencies[id] = Dependencies(sessionDelegate: sessionDelegate, builderDelegate: builderDelegate)
-      me.workoutSession.delegate = sessionDelegate
+      switch activityType {
+      case .swimming:
+        guard let swimmingLocationType = swimmingLocationType,
+              let lapLength = lapLength
+        else { fatalError("When activityType is swimming, must configure swimmingLocationType and lapLength.")  }
+        configuration.swimmingLocationType = swimmingLocationType
+        configuration.lapLength = lapLength
+      default:
+        break
+      }
+      configuration.activityType = activityType
+      configuration.locationType = locationType
+
+      me.liveData = CurrentValueSubject<LiveWorkoutInformation, SwiftyHealthKitError>(LiveWorkoutInformation())
+      me.liveWorkoutBuilder = me.workoutSession.associatedWorkoutBuilder()
       me.liveWorkoutBuilder.delegate = builderDelegate
       me.liveWorkoutBuilder.dataSource = .init(healthStore: healthStore, workoutConfiguration: configuration)
 
+      me.workoutSession = try? HKWorkoutSession(
+        healthStore: healthStore,
+        configuration: configuration
+      )
+      me.workoutSession.delegate = sessionDelegate
       me.workoutSession.startActivity(with: Date())
       me.liveWorkoutBuilder.beginCollection(withStart: Date()) { _, error in
         if let error = error { logger.error("\(error.localizedDescription)"); return }
@@ -175,7 +148,6 @@ private extension LiveWorkoutFetcher {
       return 0
     }
   }
-
 }
 
 private struct Dependencies {
@@ -228,7 +200,7 @@ private class LiveWorkoutBuilderDelegate: NSObject, HKLiveWorkoutBuilderDelegate
     for type in collectedTypes {
       guard let quantityType = type as? HKQuantityType,
             let statistics = workoutBuilder.statistics(for: quantityType)
-      else { return }
+      else { continue }
       subscriber(statistics)
     }
   }

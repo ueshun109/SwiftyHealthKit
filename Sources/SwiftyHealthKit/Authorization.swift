@@ -11,7 +11,7 @@ public extension Authorization {
       Future { completion in
         healthStore.requestAuthorization(toShare: saveDataType, read: readDataType) { result, error in
           guard let error = error else { completion(.success(result)); return }
-          logger.log("Permission request failed.")
+          logger.error("Request Authorization failed.")
           completion(.failure(SwiftyHealthKitError.requestAuthorized(error as NSError)))
         }
       }
@@ -33,7 +33,7 @@ public extension Authorization {
   static let failed = Self(
     request: { _, _ in
       Future { completion in
-        completion(.failure(SwiftyHealthKitError.requestAuthorized(NSError(domain: "com.ueshun", code: 1))))
+        completion(.failure(SwiftyHealthKitError.requestAuthorized(NSError(domain: "com.ueshun.swiftyHealthKit", code: 1))))
       }
     }
   )
