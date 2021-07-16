@@ -99,6 +99,7 @@ public extension LiveWorkoutFetcher {
       }
       configuration.activityType = activityType
       configuration.locationType = locationType
+      dependencies[id] = Dependencies(sessionDelegate: sessionDelegate, builderDelegate: builderDelegate)
       me.workoutSession = try? HKWorkoutSession(
         healthStore: healthStore,
         configuration: configuration
