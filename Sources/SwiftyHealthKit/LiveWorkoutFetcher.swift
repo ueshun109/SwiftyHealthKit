@@ -99,16 +99,16 @@ public extension LiveWorkoutFetcher {
       }
       configuration.activityType = activityType
       configuration.locationType = locationType
+      me.workoutSession = try? HKWorkoutSession(
+        healthStore: healthStore,
+        configuration: configuration
+      )
 
       me.liveData = CurrentValueSubject<LiveWorkoutInformation, SwiftyHealthKitError>(LiveWorkoutInformation())
       me.liveWorkoutBuilder = me.workoutSession.associatedWorkoutBuilder()
       me.liveWorkoutBuilder.delegate = builderDelegate
       me.liveWorkoutBuilder.dataSource = .init(healthStore: healthStore, workoutConfiguration: configuration)
 
-      me.workoutSession = try? HKWorkoutSession(
-        healthStore: healthStore,
-        configuration: configuration
-      )
       me.workoutSession.delegate = sessionDelegate
       me.workoutSession.startActivity(with: Date())
       me.liveWorkoutBuilder.beginCollection(withStart: Date()) { _, error in
