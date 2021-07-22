@@ -47,8 +47,7 @@ public extension SwiftyHealthKit {
       let authorization: Authorization = .live
       let profile: ProfileFetcher = .live
       let readType = Set(type.map { $0.dataType })
-      let saveType = Set(readType.compactMap { $0 as? HKSampleType })
-      return authorization.request(saveType, readType)
+      return authorization.request(nil, readType)
         .mapError { $0 }
         .flatMap { _ in
           profile.birthDate()
