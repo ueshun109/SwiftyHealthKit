@@ -14,6 +14,7 @@ public struct SwiftyHealthKit {
   public var heartRateDuringWorkout: (HeartRateFetcher.Arguments) -> AnyPublisher<[HeartRateFetcher.Response], SwiftyHealthKitError>
   public var isAvailable: () -> Bool
   public var profile: (Set<ProfileType>) -> AnyPublisher<Profile, SwiftyHealthKitError>
+  public var saveProfile: (Profile) -> AnyPublisher<Bool, SwiftyHealthKitError>
   public var workout: (HKWorkoutActivityType, Date?, Date?, Bool) -> AnyPublisher<[HKWorkout], SwiftyHealthKitError>
   public var burnedActiveCalories: (Date, Date, Date, DateComponents, HKStatisticsOptions, Bool) -> AnyPublisher<[BurnedCalories], SwiftyHealthKitError>
 }
@@ -69,6 +70,20 @@ public extension SwiftyHealthKit {
             .map { Profile(birthDate: info.birthDate, height: info.height, sex: info.sex, weight: $0) }
             .catch { _ in Just(info) }
         }
+        .eraseToAnyPublisher()
+    },
+    saveProfile: { profile in
+      let authorization: Authorization = .live
+      let profileSaving: ProfileSaving = .live
+      let weight = HKObjectType.quantityType(forIdentifier: .bodyMass)
+      let types = [
+        ProfileType.height.dataType,
+        ProfileType.weight.dataType,
+      ].compactMap { $0 as? HKSampleType }
+      return authorization.request(Set(types), nil)
+        .mapError { $0 }
+        .flatMap { _ in profileSaving.save(profile) }
+        .mapError { $0 }
         .eraseToAnyPublisher()
     },
     workout: { activityType, startDate, endDate, ownAppOnly in
