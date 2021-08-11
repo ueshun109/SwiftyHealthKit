@@ -1,13 +1,13 @@
 import Combine
 import HealthKit
 
-public enum ProfileType {
+public enum ProfileType: CaseIterable {
   case birthDate
   case height
   case sex
   case weight
 
-  var dataType: HKObjectType {
+  public var dataType: HKObjectType {
     switch self {
     case .birthDate: return HKObjectType.characteristicType(forIdentifier: .dateOfBirth)!
     case .height: return HKObjectType.quantityType(forIdentifier: .height)!
@@ -16,7 +16,7 @@ public enum ProfileType {
     }
   }
 
-  var unit: HKUnit? {
+  public var unit: HKUnit? {
     switch self {
     case .height: return .meterUnit(with: .centi)
     case .weight: return .gramUnit(with: .kilo)
