@@ -127,7 +127,7 @@ public extension ProfileFetcher {
           limit: HKObjectQueryNoLimit,
           sortDescriptors: [sortDescriptor]
         ) { query, result, error in
-          guard let sample = result?.last,
+          guard let sample = result?.first,
                 let quantitySample = sample as? HKQuantitySample
           else { completion(.failure(.notFound)); return }
           let latestHeight = quantitySample.quantity.doubleValue(for: .meterUnit(with: .centi))
@@ -156,7 +156,7 @@ public extension ProfileFetcher {
           limit: HKObjectQueryNoLimit,
           sortDescriptors: [sortDescriptor]
         ) { query, result, error in
-          guard let sample = result?.last,
+          guard let sample = result?.first,
                 let quantitySample = sample as? HKQuantitySample
           else { completion(.failure(.notFound)); return }
           let latestWeight = quantitySample.quantity.doubleValue(for: .gramUnit(with: .kilo))
